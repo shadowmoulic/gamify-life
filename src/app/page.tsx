@@ -466,14 +466,28 @@ export default function Home() {
                   onSubmit={e => {
                     e.preventDefault();
                     if (newCat) {
-                      setCategories([...categories, { name: newCat, frequency: "daily" }]);
+                      const freq = (document.getElementById("freq-select") as HTMLSelectElement).value as Frequency;
+                      setCategories([...categories, { name: newCat, frequency: freq }]);
                       setNewCat("");
                     }
                   }}
-                  style={{ marginTop: "2rem", display: "flex", gap: "12px" }}
+                  style={{ marginTop: "2rem", display: "grid", gap: "12px" }}
                 >
-                  <input placeholder="Add New Neural Node..." value={newCat} onChange={e => setNewCat(e.target.value)} />
-                  <button className="launch-btn" style={{ width: "80px", padding: 0, height: "60px" }}>+</button>
+                  <div style={{ display: "flex", gap: "10px" }}>
+                    <input placeholder="Node Name (e.g. TRADING)..." value={newCat} onChange={e => setNewCat(e.target.value)} style={{ flex: 1 }} />
+                    <select id="freq-select" style={{
+                      background: "white",
+                      border: "3px solid black",
+                      fontWeight: 900,
+                      padding: "0 1rem",
+                      outline: "none"
+                    }}>
+                      <option value="daily">DAILY</option>
+                      <option value="weekly">WEEKLY</option>
+                      <option value="occasional">OCCASIONAL</option>
+                    </select>
+                  </div>
+                  <button className="launch-btn" style={{ height: "60px", padding: 0 }}>INITIALIZE NEW NODE</button>
                 </form>
               </div>
               <button onClick={() => { if (confirm("ABORT SYSTEM: THIS WILL WIPE ALL NEURAL DATA.")) { localStorage.clear(); window.location.reload(); } }} style={{ width: "100%", fontSize: "0.7rem", opacity: 0.3, background: "none", border: "none", boxShadow: "none" }}>EMERGENCY WIPE SYSTEM</button>
