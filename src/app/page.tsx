@@ -26,6 +26,13 @@ import {
 import XPBar from "@/components/XPBar";
 import Planner from "@/components/Planner";
 import Motivation from "@/components/Motivation";
+import CalendarView from "@/components/CalendarView";
+
+type Frequency = "daily" | "weekly" | "occasional";
+interface Category {
+  name: string;
+  frequency: Frequency;
+}
 
 type Tab = "Rate" | "Plan" | "Calendar" | "Stats" | "AI" | "Settings";
 
@@ -38,7 +45,21 @@ export default function Home() {
   const [level, setLevel] = useState(3);
   const [streak, setStreak] = useState(0);
   const [activeTab, setActiveTab] = useState<Tab>("Rate");
-  const [categories, setCategories] = useState<string[]>(["Health", "Work", "Social", "Learning", "Creativity", "Mindset"]);
+  const [categories, setCategories] = useState<Category[]>([
+    { name: "GETTING CLIENTS", frequency: "daily" },
+    { name: "SPEEDCUBING", frequency: "daily" },
+    { name: "ABROADFIT", frequency: "daily" },
+    { name: "HEALTH", frequency: "daily" },
+    { name: "ACADEMICS", frequency: "daily" },
+    { name: "YOUTUBE", frequency: "daily" },
+    { name: "WORK - AFBF, ORBIT, IG", frequency: "daily" },
+    { name: "S7R", frequency: "weekly" },
+    { name: "TRADING", frequency: "weekly" },
+    { name: "RELATIONSHIPS", frequency: "weekly" },
+    { name: "READING", frequency: "weekly" },
+    { name: "IG THINGS", frequency: "weekly" }
+  ]);
+  const [filter, setFilter] = useState<Frequency | "all">("daily");
   const [ratings, setRatings] = useState<Record<string, number>>({});
   const [categoryNotes, setCategoryNotes] = useState<Record<string, string>>({});
   const [sessionNotes, setSessionNotes] = useState("");
@@ -90,14 +111,44 @@ export default function Home() {
     });
   };
 
+  const triggerAIInsight = async (type: "rating" | "sync") => {
+    setIsAnalyzing(true);
+    try {
+      const context = type === "rating" ? "User just updated a biometric node." : "User just finalized a neural sync.";
+      const res = await fetch("/api/analyze", {
+        method: "POST",
+        body: JSON.stringify({
+          messages: [{ role: "user", content: `${context} Provide a punchy 3-day trend review based on their logs.` }],
+          logs: logs.slice(-3)
+        }),
+      });
+      const data = await res.json();
+      setChatMessages(prev => [...prev, { role: "assistant", content: data.insight }]);
+    } catch (e) {
+      console.error("AI Insight failed");
+    } finally {
+      setIsAnalyzing(false);
+    }
+  };
+
+  const handleRating = (catName: string, value: number) => {
+    setRatings(prev => ({ ...prev, [catName]: value }));
+    addXP(5); // Immediate XP for action
+    if (Object.keys(ratings).length % 3 === 0) {
+      triggerAIInsight("rating"); // Trigger review every 3 ratings
+    }
+  };
+
   const recordSession = () => {
-    const ratingCount = Object.keys(ratings).length;
-    if (ratingCount < categories.length) {
-      alert("CRITICAL ERROR: ALL BIOMETRICS MUST BE SYNCED.");
+    const currentCats = categories.filter(c => filter === "all" || c.frequency === filter);
+    const ratingCount = currentCats.filter(c => ratings[c.name]).length;
+
+    if (ratingCount < currentCats.length) {
+      alert("CRITICAL ERROR: ALL ACTIVE BIOMETRICS MUST BE SYNCED.");
       return;
     }
     const totalRatingPoints = Object.values(ratings).reduce((a, b) => a + b, 0);
-    const finalXP = (totalRatingPoints * 5) + 50;
+    const finalXP = (totalRatingPoints * 10) + 100; // Buffed XP
 
     const newLog = {
       id: Date.now(),
@@ -110,11 +161,11 @@ export default function Home() {
 
     setLogs([newLog, ...logs]);
     addXP(finalXP);
+    triggerAIInsight("sync");
     setRatings({});
     setCategoryNotes({});
     setSessionNotes("");
 
-    // Smooth scroll to top to see XP gain
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
@@ -205,24 +256,34 @@ export default function Home() {
                 </div>
               </div>
 
-              <div className="grid" style={{ paddingBottom: "150px" }}>
-                {categories.map((cat, idx) => (
+              <div className="calendar-header-actions" style={{ marginBottom: "2rem" }}>
+                {(["daily", "weekly", "occasional", "all"] as const).map(f => (
+                  <div
+                    key={f}
+                    className={`view-pill ${filter === f ? "active" : ""}`}
+                    onClick={() => setFilter(f)}
+                  >
+                    {f.toUpperCase()}
+                  </div>
+                ))}
+              </div>
+
+              <div className="grid" style={{ paddingBottom: "200px" }}>
+                <h2 style={{ fontSize: "0.8rem", opacity: 0.5, marginBottom: "1rem" }}>{filter.toUpperCase()} ATTRIBUTES</h2>
+                {categories.filter(c => filter === "all" || c.frequency === filter).map((cat, idx) => (
                   <motion.div
-                    key={cat}
+                    key={cat.name}
                     className="attribute-cell"
-                    initial={{ opacity: 0, y: 20 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ delay: idx * 0.05 }}
+                    initial={{ opacity: 0, scale: 0.95 }}
+                    animate={{ opacity: 1, scale: 1 }}
                   >
                     <div className="flex-between">
                       <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
-                        {cat === "Health" && <Heart size={16} color="#ef4444" />}
-                        {cat === "Work" && <Briefcase size={16} color="#3b82f6" />}
-                        {cat === "Social" && <Users size={16} color="#10b981" />}
-                        <span style={{ fontWeight: 900, fontSize: "1rem", letterSpacing: "0.05em" }}>{cat.toUpperCase()}</span>
+                        <span className="frequency-badge">{cat.frequency}</span>
+                        <span style={{ fontWeight: 900, fontSize: "1rem" }}>{cat.name}</span>
                       </div>
-                      <span className="stat-label" style={{ color: ratings[cat] ? "var(--primary)" : "#ccc", fontSize: "0.6rem" }}>
-                        {ratings[cat] ? `0${ratings[cat]}/05 SYNC` : "PENDING"}
+                      <span className="stat-label" style={{ color: ratings[cat.name] ? "var(--primary)" : "#ccc" }}>
+                        {ratings[cat.name] ? `+5 XP` : "PENDING"}
                       </span>
                     </div>
 
@@ -230,8 +291,8 @@ export default function Home() {
                       {[1, 2, 3, 4, 5].map(n => (
                         <div
                           key={n}
-                          className={`power-node ${ratings[cat] === n ? "active" : ""}`}
-                          onClick={() => setRatings(prev => ({ ...prev, [cat]: n }))}
+                          className={`power-node ${ratings[cat.name] === n ? "active" : ""}`}
+                          onClick={() => handleRating(cat.name, n)}
                         >
                           {n}
                         </div>
@@ -239,9 +300,12 @@ export default function Home() {
                     </div>
 
                     <input
-                      placeholder={`Brief for ${cat}...`}
-                      value={categoryNotes[cat] || ""}
-                      onChange={(e) => setCategoryNotes(prev => ({ ...prev, [cat]: e.target.value }))}
+                      placeholder={`Input update for ${cat.name}...`}
+                      value={categoryNotes[cat.name] || ""}
+                      onChange={(e) => {
+                        setCategoryNotes(prev => ({ ...prev, [cat.name]: e.target.value }));
+                        if (e.target.value.length % 10 === 0) addXP(1); // Micro XP for typing
+                      }}
                       className="note-input"
                       style={{ border: "none", borderLeft: "4px solid #f1f5f9", padding: "0.5rem 1rem", fontSize: "0.85rem", background: "transparent" }}
                     />
@@ -250,11 +314,10 @@ export default function Home() {
 
                 <div className="panel" style={{ borderStyle: "dotted", background: "#fafafa" }}>
                   <div className="flex-between" style={{ marginBottom: "0.5rem" }}>
-                    <span className="stat-label">Neural Log Summary</span>
-                    <Activity size={14} color="#666" />
+                    <span className="stat-label">System Synthesis</span>
                   </div>
                   <textarea
-                    placeholder="Provide a final state summary for the AI..."
+                    placeholder="Provide a final state summary..."
                     value={sessionNotes}
                     onChange={(e) => setSessionNotes(e.target.value)}
                     style={{ background: "transparent", border: "none", minHeight: "80px", padding: 0, fontSize: "0.95rem" }}
@@ -267,9 +330,8 @@ export default function Home() {
                   className="launch-btn"
                   onClick={recordSession}
                   whileHover={{ scale: 1.02 }}
-                  whileTap={{ scale: 0.98 }}
                 >
-                  Finalize Neural Sync (+{(Object.values(ratings).reduce((a, b) => a + b, 0) * 5) + 50} XP)
+                  Finalize Sync 0x{filter.toUpperCase()} (+{(Object.values(ratings).length * 10) + 100} XP)
                 </motion.button>
               </div>
             </motion.div>
@@ -285,44 +347,19 @@ export default function Home() {
           {/* CALENDAR TAB */}
           {activeTab === "Calendar" && (
             <motion.div key="calendar" initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 1.05 }}>
-              <div className="panel">
-                <div className="panel-title">
-                  <span>Temporal Hub</span>
-                  <CalIcon size={16} />
+              {!session ? (
+                <div className="panel" style={{ textAlign: "center", padding: "3rem 1rem" }}>
+                  <p className="stat-label" style={{ marginBottom: "1.5rem" }}>System connection to outside calendar: OFFLINE</p>
+                  <button onClick={() => signIn("google")} className="launch-btn" style={{ width: "auto" }}>Forge Link</button>
                 </div>
-                {!session ? (
-                  <div style={{ textAlign: "center", padding: "3rem 1rem" }}>
-                    <p className="stat-label" style={{ marginBottom: "1.5rem" }}>System connection to outside calendar: OFFLINE</p>
-                    <button onClick={() => signIn("google")} className="launch-btn" style={{ width: "auto" }}>Forge Link</button>
-                  </div>
-                ) : (
-                  <div>
-                    <div className="flex-between" style={{ marginBottom: "1.5rem", padding: "1rem", background: "var(--accent)", border: "2px solid black" }}>
-                      <span style={{ fontWeight: 900, fontSize: "0.8rem" }}>{session.user?.email?.toUpperCase()}</span>
-                      <button onClick={() => signOut()} style={{ padding: "0.4rem 0.8rem", fontSize: "0.6rem", background: "black", color: "white" }}>Kill Link</button>
-                    </div>
-                    {isLoadingEvents ? <div style={{ textAlign: "center", padding: "2rem" }}>SYNCING...</div> : (
-                      <div className="grid">
-                        {calendarEvents.length > 0 ? calendarEvents.map((ev, i) => (
-                          <motion.div
-                            key={i}
-                            initial={{ x: -20, opacity: 0 }}
-                            animate={{ x: 0, opacity: 1 }}
-                            transition={{ delay: i * 0.1 }}
-                            className="panel"
-                            style={{ padding: "1.25rem", marginBottom: "1rem", boxShadow: "4px 4px 0 black" }}
-                          >
-                            <div className="flex-between">
-                              <span style={{ fontWeight: 900, fontSize: "1rem" }}>{ev.summary}</span>
-                              <span className="stat-label" style={{ color: "var(--primary)" }}>{ev.start?.dateTime ? new Date(ev.start.dateTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : "ALL DAY"}</span>
-                            </div>
-                          </motion.div>
-                        )) : <p className="stat-label" style={{ textAlign: "center" }}>No future events detected.</p>}
-                      </div>
-                    )}
-                  </div>
-                )}
-              </div>
+              ) : (
+                <CalendarView
+                  session={session}
+                  events={calendarEvents}
+                  isLoading={isLoadingEvents}
+                  onRefresh={fetchCalendarEvents}
+                />
+              )}
             </motion.div>
           )}
 
@@ -416,13 +453,25 @@ export default function Home() {
                 <div className="panel-title">Biometric Config</div>
                 <div className="grid">
                   {categories.map(c => (
-                    <div key={c} className="flex-between panel" style={{ padding: "0.75rem 1.5rem", marginBottom: 0, background: "white" }}>
-                      <span style={{ fontWeight: 900 }}>{c.toUpperCase()}</span>
-                      <X size={18} onClick={() => setCategories(categories.filter(x => x !== c))} style={{ cursor: "pointer", color: "red" }} />
+                    <div key={c.name} className="flex-between panel" style={{ padding: "0.75rem 1.5rem", marginBottom: 0, background: "white" }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+                        <span className="frequency-badge">{c.frequency}</span>
+                        <span style={{ fontWeight: 900 }}>{c.name.toUpperCase()}</span>
+                      </div>
+                      <X size={18} onClick={() => setCategories(categories.filter(x => x.name !== c.name))} style={{ cursor: "pointer", color: "red" }} />
                     </div>
                   ))}
                 </div>
-                <form onSubmit={e => { e.preventDefault(); if (newCat) { setCategories([...categories, newCat]); setNewCat(""); } }} style={{ marginTop: "2rem", display: "flex", gap: "12px" }}>
+                <form
+                  onSubmit={e => {
+                    e.preventDefault();
+                    if (newCat) {
+                      setCategories([...categories, { name: newCat, frequency: "daily" }]);
+                      setNewCat("");
+                    }
+                  }}
+                  style={{ marginTop: "2rem", display: "flex", gap: "12px" }}
+                >
                   <input placeholder="Add New Neural Node..." value={newCat} onChange={e => setNewCat(e.target.value)} />
                   <button className="launch-btn" style={{ width: "80px", padding: 0, height: "60px" }}>+</button>
                 </form>
@@ -441,6 +490,15 @@ export default function Home() {
           </motion.div>
         )}
       </AnimatePresence>
+
+      <motion.div
+        className="quick-action-fab"
+        whileHover={{ scale: 1.1 }}
+        whileTap={{ scale: 0.9 }}
+        onClick={() => setActiveTab("AI")}
+      >
+        <MessageSquare size={24} />
+      </motion.div>
 
       {/* NAV HUD */}
       <nav className="nav-hud">
